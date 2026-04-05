@@ -626,6 +626,8 @@
       if (isRolling) return;
       isRolling = true;
 
+      playRollSound(diceCount);
+
       const btn = document.getElementById('rollBtn');
       btn.classList.add('rolling');
       document.getElementById('rollBtnText').textContent = 'ロール中…';
@@ -763,6 +765,96 @@
       history = [];
       localStorage.removeItem('diceHistory');
       renderHistory();
+    }
+
+    // ── Sound ──
+    let audioCtx = null;
+
+    function getAudioCtx() {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      return audioCtx;
+    }
+
+    // ホワイトノイズバースト（サラサラ〜カラカラ音）
+    function playNoiseHit(ctx, startTime, duration = 0.06, gain = 0.25, freq = 1200) {
+      const bufSize = ctx.sampleRate * duration;
+      const buf = ctx.createBuffer(1, bufSize, ctx.sampleRate);
+      const data = buf.getChannelData(0);
+      for (let i = 0; i < bufSize; i++) data[i] = (Math.random() * 2 - 1);
+
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+
+      // バンドパスフィルタで木・プラスチック感を出す
+      const bpf = ctx.createBiquadFilter();
+      bpf.type = 'bandpass';
+      bpf.frequency.value = freq;
+      bpf.Q.value = 1.5;
+
+      const env = ctx.createGain();
+      env.gain.setValueAtTime(gain, startTime);
+      env.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+
+      src.connect(bpf);
+      bpf.connect(env);
+      env.connect(ctx.destination);
+      src.start(startTime);
+      src.stop(startTime + duration);
+    }
+
+    // 短い打撃音（ダイスが面に当たる感じ）
+    function playClick(ctx, startTime, pitch = 180) {
+      const osc = ctx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(pitch, startTime);
+      osc.frequency.exponentialRampToValueAtTime(pitch * 0.4, startTime + 0.04);
+
+      const env = ctx.createGain();
+      env.gain.setValueAtTime(0.4, startTime);
+      env.gain.exponentialRampToValueAtTime(0.001, startTime + 0.07);
+
+      osc.connect(env);
+      env.connect(ctx.destination);
+      osc.start(startTime);
+      osc.stop(startTime + 0.07);
+    }
+
+    // 最後の着地ドン
+    function playThud(ctx, startTime) {
+      const osc = ctx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(90, startTime);
+      osc.frequency.exponentialRampToValueAtTime(35, startTime + 0.15);
+
+      const env = ctx.createGain();
+      env.gain.setValueAtTime(0.55, startTime);
+      env.gain.exponentialRampToValueAtTime(0.001, startTime + 0.2);
+
+      osc.connect(env);
+      env.connect(ctx.destination);
+      osc.start(startTime);
+      osc.stop(startTime + 0.2);
+
+      // ノイズも少し混ぜる
+      playNoiseHit(ctx, startTime, 0.12, 0.3, 300);
+    }
+
+    function playRollSound(count) {
+      const ctx = getAudioCtx();
+      const now = ctx.currentTime;
+
+      // ランダムな間隔でカラカラ音を鳴らす（転がり感）
+      const hits = 8 + count * 2;
+      for (let i = 0; i < hits; i++) {
+        const t = now + i * 0.055 + Math.random() * 0.02;
+        const freq = 800 + Math.random() * 1200;
+        playNoiseHit(ctx, t, 0.05 + Math.random() * 0.03, 0.15 + Math.random() * 0.15, freq);
+        if (i % 3 === 0) playClick(ctx, t, 120 + Math.random() * 120);
+      }
+
+      // 着地音
+      playThud(ctx, now + hits * 0.055 + 0.05);
     }
 
     // ── Init ──
