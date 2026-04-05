@@ -647,7 +647,9 @@
       // Generate results
       const results = [];
       for (let i = 0; i < diceCount; i++) {
-        results.push(Math.floor(Math.random() * selectedFace) + 1);
+        const buf = new Uint32Array(1);
+        crypto.getRandomValues(buf);
+        results.push((buf[0] % selectedFace) + 1);
       }
 
       const total = results.reduce((a, b) => a + b, 0);
